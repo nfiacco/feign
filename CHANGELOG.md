@@ -1,3 +1,8 @@
+### Version 9.3
+* Adds builder methods for the Response object
+* Deprecates Response factory methods
+* Adds nullable Request field to the Response object
+
 ### Version 9.2
 * Supports context path when using Ribbon `LoadBalancingTarget`
 
