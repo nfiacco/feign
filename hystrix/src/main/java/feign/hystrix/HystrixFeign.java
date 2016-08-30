@@ -33,19 +33,29 @@ public final class HystrixFeign {
   public static final class Builder extends Feign.Builder {
 
     private Contract contract = new Contract.Default();
+    private SetterFactory setterFactory = new SetterFactory.Default();
+
+    /**
+     * Allows you to override hystrix properties such as thread pools and command keys.
+     */
+    public Builder setterFactory(SetterFactory setterFactory) {
+      this.setterFactory = setterFactory;
+      return this;
+    }
 
     /**
      * @see #target(Class, String, Object)
      */
-    public <T> T target(Target<T> target, final T fallback) {
-      super.invocationHandlerFactory(new InvocationHandlerFactory() {
-        @Override
-        public InvocationHandler create(Target target, Map<Method, MethodHandler> dispatch) {
-          return new HystrixInvocationHandler(target, dispatch, fallback);
-        }
-      });
-      super.contract(new HystrixDelegatingContract(contract));
-      return super.build().newInstance(target);
+    public <T> T target(Target<T> target, T fallback) {
+      return build(fallback != null ? new FallbackFactory.Default<T>(fallback) : null)
+          .newInstance(target);
+    }
+
+    /**
+     * @see #target(Class, String, FallbackFactory)
+     */
+    public <T> T target(Target<T> target, FallbackFactory<? extends T> fallbackFactory) {
+      return build(fallbackFactory).newInstance(target);
     }
 
     /**
@@ -87,6 +97,14 @@ public final class HystrixFeign {
       return target(new Target.HardCodedTarget<T>(apiType, url), fallback);
     }
 
+    /**
+     * Same as {@link #target(Class, String, T)}, except you can inspect a source exception before
+     * creating a fallback object.
+     */
+    public <T> T target(Class<T> apiType, String url, FallbackFactory<? extends T> fallbackFactory) {
+      return target(new Target.HardCodedTarget<T>(apiType, url), fallbackFactory);
+    }
+
     @Override
     public Feign.Builder invocationHandlerFactory(InvocationHandlerFactory invocationHandlerFactory) {
       throw new UnsupportedOperationException();
@@ -100,7 +118,17 @@ public final class HystrixFeign {
 
     @Override
     public Feign build() {
-      super.invocationHandlerFactory(new HystrixInvocationHandler.Factory());
+      return build(null);
+    }
+
+    /** Configures components needed for hystrix integration. */
+    Feign build(final FallbackFactory<?> nullableFallbackFactory) {
+      super.invocationHandlerFactory(new InvocationHandlerFactory() {
+        @Override public InvocationHandler create(Target target,
+            Map<Method, MethodHandler> dispatch) {
+          return new HystrixInvocationHandler(target, dispatch, setterFactory, nullableFallbackFactory);
+        }
+      });
       super.contract(new HystrixDelegatingContract(contract));
       return super.build();
     }

@@ -50,6 +50,34 @@ api.getYourType("a").execute();
 api.getYourTypeSynchronous("a");
 ```
 
+### Group and Command keys
+
+By default, Hystrix group keys match the target name, and the target name is usually the base url.
+Hystrix command keys are the same as logging keys, which are equivalent to javadoc references.
+
+For example, for the canonical GitHub example...
+
+* the group key would be "https://api.github.com" and
+* the command key would be "GitHub#contributors(String,String)"
+
+You can use `HystrixFeign.Builder#setterFactory(SetterFactory)` to customize this, for example, to
+read key mappings from configuration or annotations.
+
+Ex.
+```java
+SetterFactory commandKeyIsRequestLine = (target, method) -> {
+  String groupKey = target.name();
+  String commandKey = method.getAnnotation(RequestLine.class).value();
+  return HystrixCommand.Setter
+      .withGroupKey(HystrixCommandGroupKey.Factory.asKey(groupKey))
+      .andCommandKey(HystrixCommandKey.Factory.asKey(commandKey));
+};
+
+api = HystrixFeign.builder()
+                  .setterFactory(commandKeyIsRequestLine)
+                  ...
+```
+
 ### Fallback support
 
 Fallbacks are known values, which you return when there's an error invoking an http method.
@@ -77,4 +105,27 @@ GitHub fallback = (owner, repo) -> {
 GitHub github = HystrixFeign.builder()
                             ...
                             .target(GitHub.class, "https://api.github.com", fallback);
+```
+
+#### Considering the cause
+
+The cause of the fallback is logged by default to FINE level. You can programmatically inspect
+the cause by making your own `FallbackFactory`. In many cases, the cause will be a `FeignException`,
+which includes the http status.
+
+Here's an example of using `FallbackFactory`:
+
+```java
+// This instance will be invoked if there are errors of any kind.
+FallbackFactory<GitHub> fallbackFactory = cause -> (owner, repo) -> {
+  if (cause instanceof FeignException && ((FeignException) cause).status() == 403) {
+    return Collections.emptyList();
+  } else {
+    return Arrays.asList("yogi");
+  }
+};
+
+GitHub github = HystrixFeign.builder()
+                            ...
+                            .target(GitHub.class, "https://api.github.com", fallbackFactory);
 ```
